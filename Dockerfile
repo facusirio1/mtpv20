@@ -1,90 +1,85 @@
-/**
- * MTP PLATFORM — Documentos.
- */
-import { Router } from 'express';
-import { Document, Validation, Nft, User } from '../models/index.js';
-import { upload, sha256File } from '../middleware/upload.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
-import { analyzeDocument } from '../ai.js';
-import { logActivity } from '../helpers.js';
+import { useEffect, useState } from 'react';
+import Sidebar from '../../components/Sidebar.jsx';
+import { api } from '../../api.js';
 
-const r = Router();
+export default function Queue() {
+  const [queue, setQueue] = useState([]);
+  const [active, setActive] = useState(null);
+  const [result, setResult] = useState('aprobado');
+  const [opinion, setOpinion] = useState('');
+  const [valType, setValType] = useState('general');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
 
-r.post('/', requireAuth, upload.single('file'), async (req, res, next) => {
-  try {
-    const { title, doc_type = 'otro', description = '' } = req.body || {};
-    if (!title) return res.status(400).json({ error: 'El título es obligatorio' });
-    if (!req.file) return res.status(400).json({ error: 'Tenés que subir un archivo' });
+  function load() { api.get('/validations/queue').then(setQueue).catch(() => {}); }
+  useEffect(load, []);
 
-    const file_hash = sha256File(req.file.path);
-    const { risk, summary } = analyzeDocument({ title, description, type: doc_type });
+  async function submitDictamen() {
+    setErr(null); setLoading(true);
+    try {
+      await api.post('/validations', { document_id: active._id, val_type: valType, result, opinion });
+      setActive(null); setOpinion(''); setResult('aprobado');
+      load();
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  }
 
-    const doc = await Document.create({
-      user_id: req.user.id, title, doc_type, description,
-      file_path: req.file.path, file_hash, file_size: req.file.size,
-      ai_risk: risk, ai_summary: summary, status: 'cargado',
-    });
+  return (
+    <div className="layout"><Sidebar />
+      <div className="content">
+        <div className="topbar"><div><h1>Cola de validación</h1><p className="muted">{queue.length} documentos esperando dictamen.</p></div></div>
 
-    await logActivity({ userId: req.user.id, action: 'doc_upload', entity: 'document', entityId: doc._id,
-                        details: `Subió "${title}" (${doc_type})`, ip: req.ip });
-    res.json(doc);
-  } catch (e) { next(e); }
-});
+        <div className="grid grid-2">
+          <div className="card">
+            <h3>Pendientes</h3>
+            {queue.length === 0 ? <p className="muted mt">Sin documentos pendientes.</p> : (
+              <ul style={{ listStyle: 'none', padding: 0, marginTop: 14 }}>
+                {queue.map(d => (
+                  <li key={d._id} style={{ padding: '12px 14px', borderRadius: 12, background: active?._id === d._id ? 'rgba(24,191,230,.10)' : 'transparent', cursor: 'pointer', marginBottom: 6 }} onClick={() => setActive(d)}>
+                    <div className="row between"><strong>{d.title}</strong><span className="badge badge-info">{(d.doc_type || 'otro').toUpperCase()}</span></div>
+                    <div className="dim" style={{ fontSize: '.78rem' }}>{d.user_id?.full_name} · {d.user_id?.sector || 'sin sector'}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-r.get('/', requireAuth, async (req, res, next) => {
-  try {
-    const filter = req.user.role === 'admin' ? {} : { user_id: req.user.id };
-    const docs = await Document.find(filter)
-      .populate('user_id', 'full_name email entity_type company_name')
-      .populate('assigned_to', 'full_name specialty')
-      .sort({ created_at: -1 })
-      .limit(100)
-      .lean();
-    res.json(docs);
-  } catch (e) { next(e); }
-});
-
-r.get('/:id', requireAuth, async (req, res, next) => {
-  try {
-    const doc = await Document.findById(req.params.id)
-      .populate('user_id', 'full_name email company_name reputation membership wallet_address')
-      .populate('assigned_to', 'full_name specialty reputation')
-      .lean();
-    if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
-
-    const owner   = String(doc.user_id?._id) === req.user.id;
-    const assignd = doc.assigned_to && String(doc.assigned_to._id) === req.user.id;
-    if (!owner && !assignd && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'No tenés acceso a este documento' });
-    }
-
-    const [validations, nft] = await Promise.all([
-      Validation.find({ document_id: doc._id })
-        .populate('verifier_id', 'full_name specialty reputation membership')
-        .sort({ created_at: -1 })
-        .lean(),
-      Nft.findOne({ document_id: doc._id }).lean(),
-    ]);
-
-    res.json({ ...doc, validations, nft });
-  } catch (e) { next(e); }
-});
-
-r.patch('/:id/assign', requireAuth, requireRole('admin'), async (req, res, next) => {
-  try {
-    const { verifier_id } = req.body || {};
-    if (!verifier_id) return res.status(400).json({ error: 'verifier_id es obligatorio' });
-    const v = await User.findOne({ _id: verifier_id, role: 'verificador' });
-    if (!v) return res.status(404).json({ error: 'El verificador no existe' });
-
-    const doc = await Document.findByIdAndUpdate(req.params.id,
-      { assigned_to: verifier_id, status: 'en_revision' }, { new: true });
-    if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
-
-    await logActivity({ userId: req.user.id, action: 'doc_assign', entity: 'document', entityId: doc._id,
-                        details: `Asignado a ${v.full_name}`, ip: req.ip });
-    res.json({ ok: true });
-  } catch (e) { next(e); }
-});
-
-export default r;
+          <div className="card">
+            {!active ? (
+              <p className="muted">Seleccioná un documento de la lista para emitir dictamen.</p>
+            ) : (
+              <div>
+                <h3>{active.title}</h3>
+                <p className="muted">{active.description || 'Sin descripción.'}</p>
+                {err && <div className="alert alert-error mt">{err}</div>}
+                <div className="field"><label>Tipo de validación</label>
+                  <select value={valType} onChange={e => setValType(e.target.value)}>
+                    <option value="general">General</option><option value="juridica">Jurídica</option>
+                    <option value="economica">Económica</option><option value="tecnica">Técnica</option>
+                    <option value="sanitaria">Sanitaria</option>
+                  </select>
+                </div>
+                <div className="field"><label>Resultado</label>
+                  <div className="row">
+                    {['aprobado','observado','rechazado'].map(r => (
+                      <label key={r} style={{ flex: 1, cursor: 'pointer' }}>
+                        <input type="radio" name="result" value={r} checked={result === r} onChange={() => setResult(r)} style={{ marginRight: 6 }} />
+                        <span className={`badge ${r === 'aprobado' ? 'badge-good' : r === 'observado' ? 'badge-warn' : 'badge-risk'}`}>{r}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="field"><label>Dictamen escrito</label>
+                  <textarea value={opinion} onChange={e => setOpinion(e.target.value)} placeholder="Tu opinión profesional sobre el documento…" />
+                </div>
+                <button className="btn btn-primary" onClick={submitDictamen} disabled={loading}>
+                  {loading ? 'Enviando…' : 'Emitir dictamen'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
