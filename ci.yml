@@ -1,0 +1,35 @@
+name: ✨ Solicitar feature
+description: Sugerir una mejora o funcionalidad nueva
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: feature
+    attributes:
+      label: Funcionalidad propuesta
+      description: Qué te gustaría que el sistema haga
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Por qué sería útil
+      description: Caso de uso concreto que motiva esta feature
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas que consideraste
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Prioridad estimada
+      options:
+        - Nice to have
+        - Útil pero no urgente
+        - Importante
+        - Crítico

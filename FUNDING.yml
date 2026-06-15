@@ -1,0 +1,28 @@
+## Descripción
+
+<!-- Qué cambia y por qué -->
+
+## Tipo de cambio
+
+- [ ] 🐛 Bug fix (cambio no breaking que arregla un problema)
+- [ ] ✨ Feature nueva (cambio no breaking que agrega funcionalidad)
+- [ ] 💥 Breaking change (cambio que rompe compatibilidad)
+- [ ] 📚 Documentación
+- [ ] 🔧 Refactor (sin cambio de comportamiento)
+- [ ] ✅ Test
+- [ ] 🚀 Performance
+
+## ¿Cómo lo testeaste?
+
+<!-- Comandos corridos, casos cubiertos -->
+
+## Checklist
+
+- [ ] El código sigue el estilo del proyecto
+- [ ] Hice self-review del código
+- [ ] Agregué comentarios donde es necesario
+- [ ] Actualicé la documentación si corresponde
+- [ ] Mis cambios no generan warnings nuevos
+- [ ] Agregué tests que prueban mi fix/feature
+- [ ] Todos los tests existentes pasan localmente
+- [ ] CI green
